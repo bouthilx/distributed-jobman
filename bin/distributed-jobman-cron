@@ -1,0 +1,12 @@
+cat << EOM
+---------------------
+Jobman cron scheduler
+---------------------
+`date`
+
+EOM
+
+source ~/.bashrc
+
+echo distributed-jobman $1 launch
+distributed-jobman $1 launch

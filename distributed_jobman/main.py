@@ -8,9 +8,9 @@ from jobman import sql
 
 from distributed_jobman import get_db_string
 import observer
+from plot import plot
 import schedulers.jobs as job_scheduler
 import schedulers.experiments as experiment_scheduler
-
 from utils import bold, query_yes_no
 
 LOGGING_FORMAT = "%(asctime)-15s %(levelname)s:%(name)s:%(filename)-20s %(message)s"
@@ -21,6 +21,7 @@ MONITOR = "monitor"
 LIST = "list"
 RESET = "reset"
 REMOVE = "remove"
+PLOT = "plot"
 
 
 def get_options(argv):
@@ -40,6 +41,7 @@ def get_options(argv):
     list_parser = subparsers.add_parser(LIST)
     reset_parser = subparsers.add_parser(RESET)
     remove_parser = subparsers.add_parser(REMOVE)
+    plot_parser = subparsers.add_parser(PLOT)
 
     for subparser in [launch_parser, monitor_parser]:
         subparser.add_argument("-c", "--cluster", default=None, help="""
@@ -59,6 +61,8 @@ def get_options(argv):
             WRITEME""")
     remove_parser.add_argument("name", help="""
         WRITEME""")
+    plot_parser.add_argument("experiment_name", help="""
+        WRITEME""")
 
     options = parser.parse_args(argv)
 
@@ -72,6 +76,15 @@ def get_options(argv):
         print "-----------------------------\n"
 
     return options
+
+
+def _format_ids(jobs, show_maximum=20):
+    ids = [str(job["id"]) for job in jobs]
+    ids_string = ", ".join(sorted(ids)[:show_maximum])
+    if len(ids) > show_maximum:
+        ids_string += ", ..."
+
+    return ids_string
 
 
 def list_experiments(cluster):
@@ -93,15 +106,30 @@ def list_experiments(cluster):
 
         table_name = experiment["table"]
 
-        print "      # of jobs in total = %d" % len(job_scheduler.load_jobs(table_name))
-        print ("                 waiting = %d" %
-               observer.count_pending_jobs(table_name))
-        print ("                 running = %d" %
-               observer.count_running_jobs(table_name))
-        print ("               completed = %d" %
-               observer.count_completed_jobs(table_name))
-        print ("                  broken = %d" %
-               observer.count_broken_jobs(table_name))
+        jobs = job_scheduler.load_jobs(table_name)
+        waiting_jobs = []
+        running_jobs = []
+        completed_jobs = []
+        broken_jobs = []
+        for job in jobs:
+            if job_scheduler.is_pending(job):
+                waiting_jobs.append(job)
+            elif job_scheduler.is_running(job):
+                running_jobs.append(job)
+            elif job_scheduler.is_completed(job):
+                completed_jobs.append(job)
+            elif job_scheduler.is_broken(job):
+                broken_jobs.append(job)
+
+        print ("      # of jobs in total = % 3d" % len(jobs))
+        print ("                 waiting = % 3d    {%s}" %
+               (len(waiting_jobs), _format_ids(waiting_jobs)))
+        print ("                 running = % 3d    {%s}" %
+               (len(running_jobs), _format_ids(running_jobs)))
+        print ("               completed = % 3d    {%s}" %
+               (len(completed_jobs), _format_ids(completed_jobs)))
+        print ("                  broken = % 3d    {%s}" %
+               (len(broken_jobs), _format_ids(broken_jobs)))
         print
 
 
@@ -204,7 +232,8 @@ def reset_jobs(name, status):
         jobs = job_scheduler.load_running_jobs(experiment["table"])
 
     print "Resetting %s jobs to START status..." % status
-    job_scheduler.update_jobs(jobs, {sql.STATUS: sql.START, 'proc_status': 'pending'})
+    job_scheduler.update_jobs(experiment["table"], jobs,
+                              {sql.STATUS: sql.START, 'proc_status': 'pending'})
 
 
 def remove_experiment(name):
@@ -228,6 +257,19 @@ def remove_experiment(name):
     #    pass
 
 
+def plot_experiment(experiment_name):
+    experiments = experiment_scheduler.load_experiments(
+        cluster=None, filter_eq_dct=dict(name=experiment_name))
+
+    if len(experiments) == 0:
+        print "No experiments in database %s" % get_db_string("experiments")
+
+    experiment = experiments[0]
+
+    jobs = job_scheduler.load_jobs(experiment['table'])
+    return plot(jobs)
+
+
 def main(argv):
     options = get_options(argv)
 
@@ -247,6 +289,8 @@ def main(argv):
                    options.job_status)
     elif options.command == REMOVE:
         remove_experiment(options.name)
+    elif options.command == PLOT:
+        plot_experiment(options.experiment_name)
 
 
 if __name__ == "__main__":

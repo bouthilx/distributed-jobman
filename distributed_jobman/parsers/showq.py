@@ -9,9 +9,9 @@ from distributed_jobman.utils import is_int
 
 def showq(username=None):
     if username is None:
-        command = "showq"
+        command = "showq --blocking"
     else:
-        command = "showq -u %s" % username
+        command = "showq -u %s --blocking" % username
 
     process = subprocess.Popen([command],
                                stdout=subprocess.PIPE,

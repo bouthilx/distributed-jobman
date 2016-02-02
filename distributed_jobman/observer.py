@@ -1,6 +1,6 @@
 import distributed_jobman.schedulers.jobs as job_scheduler
-# from distributed_jobman.parsers.qstat import qstat
-from distributed_jobman.parsers.showq import showq
+from distributed_jobman.parsers.qstat import qstat
+# from distributed_jobman.parsers.showq import showq
 from distributed_jobman import config
 
 try:
@@ -31,7 +31,7 @@ def count_submitted_jobs(username=None):
             raise ImportError("pynvml is not installed")
         return sum(not free for free in nvidia.get_free_gpus().values())
     elif config["scheduler"]["type"] == "cluster":
-        # jobs = qstat(username)
-        # return sum(job['job_array_running'] for job in jobs)
-        jobs = showq(username)
-        return sum(len(job_array_ids) for job_array_ids in jobs.values())
+        jobs = qstat(username)
+        return sum(job['job_array_running'] for job in jobs)
+        # jobs = showq(username)
+        # return sum(len(job_array_ids) for job_array_ids in jobs.values())

@@ -48,7 +48,7 @@ def get_options(argv):
         subparser.add_argument("-c", "--cluster", default=None, help="""
             WRITEME""")
 
-    launch_parser.add_argument("cap_launch", default=None, help="""
+    launch_parser.add_argument("-l", "--limit", default=None, help="""
         Limit the number of jobs that can be launched""")
 
     launch_local_parser.add_argument("experiment_name", help="""
@@ -181,7 +181,7 @@ def monitor_single_experiment(cluster, experiment):
     return nb_of_jobs_to_launch
 
 
-def launch(cluster, cap_launch):
+def launch(cluster, limit):
     if cluster is None:
         raise ValueError("cluster must be specified for launch option")
 
@@ -196,9 +196,9 @@ def launch(cluster, cap_launch):
         nb_of_jobs_to_launch = monitor_single_experiment(cluster, experiment)
 
         if nb_of_jobs_to_launch > 0:
-            if cap_launch and nb_of_jobs_to_launch > cap_launch:
+            if limit and nb_of_jobs_to_launch > limit:
                 print "would submit %d new jobs" % nb_of_jobs_to_launch
-                nb_of_jobs_to_launch = cap_launch
+                nb_of_jobs_to_launch = limit
             print "submitting %d new jobs" % nb_of_jobs_to_launch
             job_scheduler.submit_job(cluster, experiment, nb_of_jobs_to_launch)
         else:
@@ -287,7 +287,7 @@ def main(argv):
         logging.basicConfig(level=logging.DEBUG, format=LOGGING_FORMAT)
 
     if options.command == LAUNCH:
-        launch(options.cluster, options.cap_launch)
+        launch(options.cluster, options.limit)
     if options.command == LAUNCH_LOCAL:
         launch_local(options.experiment_name, options.n, options.root)
     elif options.command == MONITOR:

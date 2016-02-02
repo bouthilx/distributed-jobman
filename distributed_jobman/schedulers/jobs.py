@@ -61,33 +61,46 @@ def _run_process(command_string):
     return 1
 
 
-def _load_pending_jobs(table_name):
+def is_pending(job):
+    return job["jobman"]["status"] == sql.START
 
-    jobs = load_jobs(table_name, filter_eq_dct={'jobman.status': sql.START})
+
+def is_running(job):
+    return job["jobman"]["status"] == sql.RUNNING
+
+
+def is_completed(job):
+    return job["jobman"]["status"] == sql.DONE
+
+
+def is_broken(job):
+    return (job["jobman"]["status"] in [sql.ERR_RUN, sql.ERR_SYNC, sql.ERR_START])
+
+
+def load_pending_jobs(table_name):
+
+    jobs = load_jobs(table_name, {"jobman.status": sql.START})
 
     return jobs
 
 
-def _load_running_jobs(table_name):
+def load_running_jobs(table_name):
 
-    jobs = load_jobs(table_name, filter_eq_dct={'jobman.status': sql.RUNNING})
-
-    return jobs
-
-
-def _load_completed_jobs(table_name):
-
-    jobs = load_jobs(table_name, filter_eq_dct={'jobman.status': sql.DONE})
+    jobs = load_jobs(table_name, {"jobman.status": sql.RUNNING})
 
     return jobs
 
 
-def _load_broken_jobs(table_name):
+def load_completed_jobs(table_name):
+
+    jobs = load_jobs(table_name, {"jobman.status": sql.DONE})
+
+    return jobs
+
+
+def load_broken_jobs(table_name):
+
     jobs = load_jobs(table_name)
-
-    def is_broken(job):
-        return (job["jobman.status"] in
-                [sql.ERR_RUN, sql.ERR_SYNC, sql.ERR_START])
 
     return [job for job in jobs if is_broken(job)]
 

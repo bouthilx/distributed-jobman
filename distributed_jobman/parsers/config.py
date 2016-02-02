@@ -1,4 +1,4 @@
-from ConfigParser import ConfigParser
+from ConfigParser import ConfigParser, Error
 import os
 
 p2_config = ConfigParser()
@@ -19,4 +19,11 @@ for key in keys:
 
 database["cache_timeout"] = float(database["cache_timeout"])
 
-config = dict(database=database)
+scheduler_types = ["multi-gpu", "cluster"]
+
+scheduler = dict(type=p2_config.get("scheduler", "type"))
+
+if scheduler["type"] not in scheduler_types:
+    raise Error("Invalid scheduler type: %s" % scheduler["type"])
+
+config = dict(database=database, scheduler=scheduler)

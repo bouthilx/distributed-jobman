@@ -95,7 +95,7 @@ def list_experiments(cluster):
 
     for experiment in experiments:
         print "Name:", bold(experiment["name"])
-        print "  Id: %d" % experiment[sql.JOBID]
+        print "  Id: %d" % experiment["jobman"]["id"]
         for key in ["table", "gpu"]:
             print "      %s = %s" % (key, str(experiment[key]))
 

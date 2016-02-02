@@ -2,6 +2,7 @@ import logging
 
 from jobman import sql
 from jobman.api0 import open_db
+from jobman.tools import expand
 
 from distributed_jobman import config
 from distributed_jobman.utils import Cache, SafeSession
@@ -91,11 +92,11 @@ class Database(object):
                 sql_row = self._load_in_safe_session(
                     db=db, safe_session=safe_session, row_id=row_id)[0]
                 logger.debug("update row %d" % row_id)
-                with safe_session.set_timer(60):
+                with safe_session.set_timer(60 * 5):
                     sql_row.update_simple(row, safe_session.session)
             else:
                 logger.debug("insert new row")
-                with safe_session.set_timer(60):
+                with safe_session.set_timer(60 * 5):
                     sql_row = sql.insert_dict(row, db,
                                               session=safe_session.session)
                     sql_row._set_in_session(sql.JOBID, sql_row.id,
@@ -103,7 +104,7 @@ class Database(object):
 
             row_id = sql_row.id
 
-            with safe_session.set_timer(60):
+            with safe_session.set_timer(60 * 5):
                 safe_session.session.commit()
                 logger.debug("session commited")
 
@@ -122,9 +123,9 @@ class Database(object):
 
     def _eager_dicts(self, lazy_sql_rows, safe_session):
         eager_dicts = [None] * len(lazy_sql_rows)
-        with safe_session.set_timer(60):
+        with safe_session.set_timer(60 * 5):
             for i, lazy_sql_row in enumerate(lazy_sql_rows):
-                eager_dicts[i] = dict(lazy_sql_row.iteritems())
+                eager_dicts[i] = expand(dict(lazy_sql_row.iteritems()))
 
         return eager_dicts
 
@@ -141,14 +142,23 @@ class Database(object):
             logger.debug("Fetch done")
 
         for eager_dict in eager_dicts:
-            eager_dict['id'] = eager_dict['jobman.id']
+            try:
+                eager_dict['id'] = eager_dict['jobman']['id']
+            except KeyError:
+                print "Row id is broken, deleting and reinserting"
+                self.delete(table_name, eager_dict)
+                if "id" in eager_dict:
+                    print eager_dict["id"]
+                    del eager_dict["id"]
+                eager_dict.update(self.save(table_name, eager_dict))
+                print eager_dict["id"]
 
         return eager_dicts
 
     def _load_in_safe_session(self, db, safe_session,
                               filter_eq_dct=None, row_id=None):
 
-        with safe_session.set_timer(60 * 2):
+        with safe_session.set_timer(60 * 5):
             logger.debug("Query session...")
             q = db.query(safe_session.session)
             if row_id is not None:

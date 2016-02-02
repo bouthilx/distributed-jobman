@@ -19,6 +19,14 @@ def bold(string, out=sys.stdout):
         return string
 
 
+def is_int(s):
+    try:
+        int(s)
+        return True
+    except ValueError:
+        return False
+
+
 # http://code.activestate.com/recipes/577058/
 def query_yes_no(question):
     """Ask a yes/no question via raw_input() and return their answer.
@@ -162,5 +170,4 @@ class SafeSession(object):
         else:
             self.restore_signal_handlers()
             self.session.close()
-            logger.debug("safe session closed")
             return True

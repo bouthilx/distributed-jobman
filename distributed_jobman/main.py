@@ -2,6 +2,7 @@ import argparse
 import logging
 import os
 import pwd
+import random
 import sys
 
 from jobman import sql
@@ -185,6 +186,7 @@ def launch(cluster, cap_launch):
         raise ValueError("cluster must be specified for launch option")
 
     experiments = experiment_scheduler.load_experiments(cluster)
+    random.shuffle(experiments)
 
     if len(experiments) == 0:
         print "No experiments in database %s" % get_db_string("experiments")

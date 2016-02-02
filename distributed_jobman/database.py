@@ -1,8 +1,9 @@
 import logging
+import sys
 
 from jobman import sql
 from jobman.api0 import open_db
-from jobman.tools import expand
+from jobman.tools import flatten, expand
 
 from distributed_jobman import config
 from distributed_jobman.utils import Cache, SafeSession
@@ -66,7 +67,10 @@ class Database(object):
                 for row in rows:
                     sql_row = self._load_in_safe_session(
                         db=db, safe_session=safe_session, row_id=row['id'])[0]
-                    sql_row.update_simple(update_dict, safe_session.session)
+                    try:
+                        sql_row.update_simple(flatten(update_dict), safe_session.session)
+                    except:
+                        sys.stderr.write("Failed for row: %d\n" % row['id'])
                 safe_session.session.commit()
 
     def delete(self, table_name, rows):
@@ -75,9 +79,12 @@ class Database(object):
         with SafeSession(db) as safe_session:
             with safe_session.set_timer(60 * 5):
                 for row in rows:
-                    sql_row = self._load_in_safe_session(
-                        db=db, safe_session=safe_session, row_id=row['id'])[0]
-                    sql_row.delete(safe_session.session)
+                    try:
+                        sql_row = self._load_in_safe_session(
+                            db=db, safe_session=safe_session, row_id=row['id'])[0]
+                        sql_row.delete(safe_session.session)
+                    except:
+                        sys.stderr.write("Failed for row: %d\n" % row['id'])
                 safe_session.session.commit()
 
     def save(self, table_name, row):
@@ -93,11 +100,11 @@ class Database(object):
                     db=db, safe_session=safe_session, row_id=row_id)[0]
                 logger.debug("update row %d" % row_id)
                 with safe_session.set_timer(60 * 5):
-                    sql_row.update_simple(row, safe_session.session)
+                    sql_row.update_simple(flatten(row), safe_session.session)
             else:
                 logger.debug("insert new row")
                 with safe_session.set_timer(60 * 5):
-                    sql_row = sql.insert_dict(row, db,
+                    sql_row = sql.insert_dict(flatten(row), db,
                                               session=safe_session.session)
                     sql_row._set_in_session(sql.JOBID, sql_row.id,
                                             safe_session.session)
@@ -145,13 +152,13 @@ class Database(object):
             try:
                 eager_dict['id'] = eager_dict['jobman']['id']
             except KeyError:
-                print "Row id is broken, deleting and reinserting"
+                logger.warning("Row id is broken, deleting and reinserting")
                 self.delete(table_name, eager_dict)
                 if "id" in eager_dict:
-                    print eager_dict["id"]
+                    logger.debug("%d\n" % eager_dict["id"])
                     del eager_dict["id"]
                 eager_dict.update(self.save(table_name, eager_dict))
-                print eager_dict["id"]
+                logger.debug("%d\n" % eager_dict["id"])
 
         return eager_dicts
 

@@ -6,6 +6,7 @@ import random
 import sys
 
 from jobman import sql
+from jobman.tools import expand
 
 from distributed_jobman import get_db_string
 import observer
@@ -243,7 +244,8 @@ def reset_jobs(name, status):
 
     print "Resetting %s jobs to START status..." % status
     job_scheduler.update_jobs(experiment["table"], jobs,
-                              {sql.STATUS: sql.START, 'proc_status': 'pending'})
+                              expand({sql.STATUS: sql.START,
+                                      'proc_status': 'pending'}))
 
 
 def remove_experiment(name):

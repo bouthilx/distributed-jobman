@@ -4,6 +4,7 @@ import os
 import pwd
 import random
 import sys
+import time
 
 from jobman import sql
 from jobman.tools import expand
@@ -49,7 +50,7 @@ def get_options(argv):
         subparser.add_argument("-c", "--cluster", default=None, help="""
             WRITEME""")
 
-    launch_parser.add_argument("-l", "--limit", default=None, help="""
+    launch_parser.add_argument("-l", "--limit", type=int, default=0, help="""
         Limit the number of jobs that can be launched""")
 
     launch_local_parser.add_argument("experiment_name", help="""
@@ -206,6 +207,7 @@ def launch(cluster, limit):
             print "no job to launch"
 
         print "\n"
+        time.sleep(15)
 
 
 def launch_local(name, nb_of_jobs_to_launch, root):

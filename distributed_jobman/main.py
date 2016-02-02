@@ -43,9 +43,12 @@ def get_options(argv):
     remove_parser = subparsers.add_parser(REMOVE)
     plot_parser = subparsers.add_parser(PLOT)
 
-    for subparser in [launch_parser, monitor_parser]:
+    for subparser in [launch_parser, monitor_parser, list_parser]:
         subparser.add_argument("-c", "--cluster", default=None, help="""
             WRITEME""")
+
+    launch_parser.add_argument("cap_launch", default=None, help="""
+        Limit the number of jobs that can be launched""")
 
     launch_local_parser.add_argument("experiment_name", help="""
         WRITEME""")
@@ -104,33 +107,35 @@ def list_experiments(cluster):
             for key, value in sorted(cluster.iteritems()):
                 print "          %s = %s" % (key, value)
 
-        table_name = experiment["table"]
-
-        jobs = job_scheduler.load_jobs(table_name)
-        waiting_jobs = []
-        running_jobs = []
-        completed_jobs = []
-        broken_jobs = []
-        for job in jobs:
-            if job_scheduler.is_pending(job):
-                waiting_jobs.append(job)
-            elif job_scheduler.is_running(job):
-                running_jobs.append(job)
-            elif job_scheduler.is_completed(job):
-                completed_jobs.append(job)
-            elif job_scheduler.is_broken(job):
-                broken_jobs.append(job)
-
-        print ("      # of jobs in total = % 3d" % len(jobs))
-        print ("                 waiting = % 3d    {%s}" %
-               (len(waiting_jobs), _format_ids(waiting_jobs)))
-        print ("                 running = % 3d    {%s}" %
-               (len(running_jobs), _format_ids(running_jobs)))
-        print ("               completed = % 3d    {%s}" %
-               (len(completed_jobs), _format_ids(completed_jobs)))
-        print ("                  broken = % 3d    {%s}" %
-               (len(broken_jobs), _format_ids(broken_jobs)))
+        list_jobs(experiment["table"])
         print
+
+
+def list_jobs(table_name):
+    jobs = job_scheduler.load_jobs(table_name)
+    waiting_jobs = []
+    running_jobs = []
+    completed_jobs = []
+    broken_jobs = []
+    for job in jobs:
+        if job_scheduler.is_pending(job):
+            waiting_jobs.append(job)
+        elif job_scheduler.is_running(job):
+            running_jobs.append(job)
+        elif job_scheduler.is_completed(job):
+            completed_jobs.append(job)
+        elif job_scheduler.is_broken(job):
+            broken_jobs.append(job)
+
+    print ("      # of jobs in total = % 3d" % len(jobs))
+    print ("                 waiting = % 3d    {%s}" %
+           (len(waiting_jobs), _format_ids(waiting_jobs)))
+    print ("                 running = % 3d    {%s}" %
+           (len(running_jobs), _format_ids(running_jobs)))
+    print ("               completed = % 3d    {%s}" %
+           (len(completed_jobs), _format_ids(completed_jobs)))
+    print ("                  broken = % 3d    {%s}" %
+           (len(broken_jobs), _format_ids(broken_jobs)))
 
 
 def monitor(cluster):
@@ -175,7 +180,7 @@ def monitor_single_experiment(cluster, experiment):
     return nb_of_jobs_to_launch
 
 
-def launch(cluster):
+def launch(cluster, cap_launch):
     if cluster is None:
         raise ValueError("cluster must be specified for launch option")
 
@@ -189,6 +194,9 @@ def launch(cluster):
         nb_of_jobs_to_launch = monitor_single_experiment(cluster, experiment)
 
         if nb_of_jobs_to_launch > 0:
+            if cap_launch and nb_of_jobs_to_launch > cap_launch:
+                print "would submit %d new jobs" % nb_of_jobs_to_launch
+                nb_of_jobs_to_launch = cap_launch
             print "submitting %d new jobs" % nb_of_jobs_to_launch
             job_scheduler.submit_job(cluster, experiment, nb_of_jobs_to_launch)
         else:
@@ -277,7 +285,7 @@ def main(argv):
         logging.basicConfig(level=logging.DEBUG, format=LOGGING_FORMAT)
 
     if options.command == LAUNCH:
-        launch(options.cluster)
+        launch(options.cluster, options.cap_launch)
     if options.command == LAUNCH_LOCAL:
         launch_local(options.experiment_name, options.n, options.root)
     elif options.command == MONITOR:

@@ -1,25 +1,29 @@
 import argparse
+import copy
 import logging
 import os
 import pwd
 import random
+import re
 import sys
 import time
 
 from jobman import sql
-from jobman.tools import expand
+from jobman.channel import Channel
+from jobman.tools import expand, resolve
 
 from distributed_jobman import get_db_string
 import observer
 from plot import plot
 import schedulers.jobs as job_scheduler
 import schedulers.experiments as experiment_scheduler
-from utils import bold, query_yes_no
+from utils import bold, query_yes_no, load_json, ChangeDir
 
+logger = logging.getLogger("main")
 LOGGING_FORMAT = "%(asctime)-15s %(levelname)s:%(name)s:%(filename)-20s %(message)s"
 
 LAUNCH = "launch"
-LAUNCH_LOCAL = "launch-local"
+RUN = "run"
 MONITOR = "monitor"
 LIST = "list"
 RESET = "reset"
@@ -39,7 +43,7 @@ def get_options(argv):
 
     subparsers = parser.add_subparsers(dest='command')
     launch_parser = subparsers.add_parser(LAUNCH)
-    launch_local_parser = subparsers.add_parser(LAUNCH_LOCAL)
+    run_parser = subparsers.add_parser(RUN)
     monitor_parser = subparsers.add_parser(MONITOR)
     list_parser = subparsers.add_parser(LIST)
     reset_parser = subparsers.add_parser(RESET)
@@ -50,23 +54,39 @@ def get_options(argv):
         subparser.add_argument("-c", "--cluster", default=None, help="""
             WRITEME""")
 
+    # Launch parser arguments
+
     launch_parser.add_argument("-l", "--limit", type=int, default=0, help="""
         Limit the number of jobs that can be launched""")
+    launch_parser.add_argument("-e", "--experiment", help="""
+        Only launch the given experiment name""")
 
-    launch_local_parser.add_argument("experiment_name", help="""
+    # Run parser arguments
+
+    run_parser.add_argument("main_function_path", help="""
         WRITEME""")
-    launch_local_parser.add_argument("root", default=".", nargs="?", help="""
+    run_parser.add_argument("experiment_config", help="""
         WRITEME""")
-    launch_local_parser.add_argument("-n", default=1, type=int, help="""
+    run_parser.add_argument("job_config", help="""
         WRITEME""")
+    run_parser.add_argument("-f", "--force", action="store_true", help="""
+        WRITEME""")
+
+    # Reset parser arguments
 
     reset_parser.add_argument("experiment_name", help="""
         WRITEME""")
     reset_parser.add_argument(
         "job_status", choices=["running", "completed", "broken"], help="""
             WRITEME""")
+
+    # Remove parser arguments
+
     remove_parser.add_argument("name", help="""
         WRITEME""")
+
+    # Plot parser arguments
+
     plot_parser.add_argument("experiment_name", help="""
         WRITEME""")
 
@@ -183,11 +203,18 @@ def monitor_single_experiment(cluster, experiment):
     return nb_of_jobs_to_launch
 
 
-def launch(cluster, limit):
+def launch(cluster, limit, experiment):
     if cluster is None:
         raise ValueError("cluster must be specified for launch option")
 
-    experiments = experiment_scheduler.load_experiments(cluster)
+    if experiment:
+        filter_eq_dct = dict(name=experiment)
+    else:
+        filter_eq_dct = None
+
+    experiments = experiment_scheduler.load_experiments(
+        cluster, filter_eq_dct=filter_eq_dct)
+
     random.shuffle(experiments)
 
     if len(experiments) == 0:
@@ -210,21 +237,50 @@ def launch(cluster, limit):
         time.sleep(15)
 
 
-def launch_local(name, nb_of_jobs_to_launch, root):
-    experiments = experiment_scheduler.load_experiments(
-        cluster=None, filter_eq_dct=dict(name=name))
+function_path_re = re.compile('\.py$')
 
-    if len(experiments) == 0:
-        print "No experiments in database %s" % get_db_string("experiments")
-        return
 
-    experiment = experiments[0]
+def run(function_path, experiment_config_file, job_config_file, force):
 
-    job_scheduler.submit_local_job(experiment, nb_of_jobs_to_launch, root)
+    job_dir = os.path.dirname(job_config_file)
+    experiment_config = load_json(os.path.join(experiment_config_file))
+    state = load_json(job_config_file)
 
-    # update experiment stats
+    with ChangeDir(job_dir):
 
-    print "\n"
+        experiment = experiment_scheduler.save_experiment(
+            name=experiment_config["experiment_name"],
+            table_name=experiment_config["experiment_name"] + "_jobs",
+            clusters=experiment_config["clusters"],
+            duree="", mem="", env="", gpu="")
+
+        table_name = experiment["table"]
+
+        channel = Channel()
+
+        state["jobman"] = dict(status=channel.START)
+        state_to_hash = copy.copy(state)
+        jobs = job_scheduler.load_jobs(table_name, hash_of=state_to_hash)
+        state_to_hash["jobman"] = dict(status=channel.RUNNING)
+        jobs += job_scheduler.load_jobs(table_name, hash_of=state_to_hash)
+        if len(jobs) > 0:
+            logger.warning("Job already registered, loading from database")
+            state = jobs[0]
+
+        if state["jobman"]["status"] != channel.START:
+            if not force:
+                raise RuntimeError("Job (%d) is not available" % state["id"])
+
+            logging.warning("Job (%d) is not available. Forcing it to run" %
+                            state["id"])
+
+        state["jobman"]["status"] = channel.RUNNING
+
+        state = job_scheduler.save_job(table_name, state)
+
+        resolve(function_path_re.sub('', function_path)).jobman_main(state, channel)
+
+        job_scheduler.save_job(experiment["table"], state)
 
 
 def reset_jobs(name, status):
@@ -289,11 +345,14 @@ def main(argv):
 
     if options.verbose:
         logging.basicConfig(level=logging.DEBUG, format=LOGGING_FORMAT)
+    else:
+        logging.basicConfig(level=logging.WARNING, format=LOGGING_FORMAT)
 
     if options.command == LAUNCH:
-        launch(options.cluster, options.limit)
-    if options.command == LAUNCH_LOCAL:
-        launch_local(options.experiment_name, options.n, options.root)
+        launch(options.cluster, options.limit, options.experiment)
+    if options.command == RUN:
+        run(options.main_function_path, options.experiment_config,
+            options.job_config, options.force)
     elif options.command == MONITOR:
         monitor(options.cluster)
     elif options.command == LIST:

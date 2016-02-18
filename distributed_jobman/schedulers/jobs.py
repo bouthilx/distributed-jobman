@@ -31,8 +31,9 @@ def _build_jobdispatch_command_string(cluster, experiment, nb_of_jobs_to_launch)
         arguments_string += "--gpu"
 
     for option_name in ["duree", "mem", "env"]:
-        arguments_string += (
-            " --%s=%s" % (option_name, experiment["clusters"][cluster][option_name]))
+        option_value = experiment["clusters"][cluster].get(option_name)
+        if option_value:
+            arguments_string += " --%s=%s" % (option_name, option_value)
 
     arguments_string += " --repeat_jobs=%d" % nb_of_jobs_to_launch
 
@@ -105,9 +106,19 @@ def load_broken_jobs(table_name):
     return [job for job in jobs if is_broken(job)]
 
 
-def load_jobs(table_name, filter_eq_dct=None, job_id=None):
+def job_exists(table_name, job):
 
-    jobs = database.load(table_name, filter_eq_dct, job_id)
+    if "id" in job:
+        jobs = database.load(table_name, job["id"])
+    else:
+        jobs = database.load(table_name, hash_of=job)
+
+    return len(jobs) == 1
+
+
+def load_jobs(table_name, filter_eq_dct=None, job_id=None, hash_of=None):
+
+    jobs = database.load(table_name, filter_eq_dct, job_id, hash_of=hash_of)
 
     return jobs
 

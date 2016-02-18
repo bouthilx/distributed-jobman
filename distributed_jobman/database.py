@@ -1,6 +1,8 @@
 import logging
 import sys
 
+from psycopg2 import OperationalError 
+
 from jobman import sql
 from jobman.api0 import open_db
 from jobman.tools import flatten, expand
@@ -106,6 +108,8 @@ class Database(object):
                 with safe_session.set_timer(60 * 5):
                     sql_row = sql.insert_dict(flatten(row), db,
                                               session=safe_session.session)
+                    if sql_row is None:
+                        raise OperationalError("Identical row already exists")
                     sql_row._set_in_session(sql.JOBID, sql_row.id,
                                             safe_session.session)
 
@@ -136,13 +140,13 @@ class Database(object):
 
         return eager_dicts
 
-    def load(self, table_name, filter_eq_dct=None, row_id=None):
+    def load(self, table_name, filter_eq_dct=None, row_id=None, hash_of=None):
         db = self._open_db(table_name)
 
         with SafeSession(db) as safe_session:
 
             sql_rows = self._load_in_safe_session(
-                db, safe_session, filter_eq_dct, row_id)
+                db, safe_session, filter_eq_dct, row_id, hash_of)
 
             logger.debug("Fetch all row attributes...")
             eager_dicts = self._eager_dicts(sql_rows, safe_session)
@@ -163,7 +167,7 @@ class Database(object):
         return eager_dicts
 
     def _load_in_safe_session(self, db, safe_session,
-                              filter_eq_dct=None, row_id=None):
+                              filter_eq_dct=None, row_id=None, hash_of=None):
 
         with safe_session.set_timer(60 * 5):
             logger.debug("Query session...")
@@ -171,8 +175,11 @@ class Database(object):
             if row_id is not None:
                 sql_row = q._query.get(row_id)
                 if sql_row is None:
-                    raise ValueError("There is no rows with id \"%d\"" % row_id)
+                    raise OperationalError("There is no rows with id \"%d\"" % row_id)
                 sql_rows = [sql_row]
+            elif hash_of is not None:
+                hashcode = sql.hash_state(flatten(hash_of))
+                sql_rows = q._query.filter(db._Dict.hash == hashcode).all()
             elif filter_eq_dct is not None:
                 sql_rows = q.filter_eq_dct(filter_eq_dct).all()
             else:

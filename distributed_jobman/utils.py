@@ -1,4 +1,6 @@
+import json
 import logging
+import os
 import signal
 import sys
 import threading
@@ -10,6 +12,11 @@ from sqlalchemy.orm.session import Session
 
 
 logger = logging.getLogger("utils")
+
+
+def load_json(file_path):
+    return json.loads(
+        open(file_path, 'r').read().replace(" ", "").replace("\n", ""))
 
 
 def bold(string, out=sys.stdout):
@@ -142,7 +149,7 @@ class SafeSession(object):
 
     def handle_interrupt(self, signal_number, frame):
         self.restore_signal_handlers()
-        #self.rollback()
+        self.rollback()
 
     def rollback(self):
         logger.warning("An error occured during transaction, session is "
@@ -171,3 +178,27 @@ class SafeSession(object):
             self.restore_signal_handlers()
             self.session.close()
             return True
+
+
+class ChangeDir(object):
+
+    def __init__(self, dir_path, bypass=False):
+        self._dir_path = dir_path
+        self.bypass = bypass
+
+    def __enter__(self):
+        if self.bypass:
+            return
+
+        if not os.path.exists(self._dir_path):
+            os.makedirs(self._dir_path)
+
+        self._old_cwd = os.getcwd()
+        os.chdir(self._dir_path)
+
+    def __exit__(self, type, value, traceback):
+        if self.bypass:
+            return
+
+        os.chdir(self._old_cwd)
+        self._old_cwd = None

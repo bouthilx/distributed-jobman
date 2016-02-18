@@ -26,6 +26,7 @@ LAUNCH = "launch"
 RUN = "run"
 MONITOR = "monitor"
 LIST = "list"
+SET = "set"
 RESET = "reset"
 REMOVE = "remove"
 PLOT = "plot"
@@ -46,6 +47,7 @@ def get_options(argv):
     run_parser = subparsers.add_parser(RUN)
     monitor_parser = subparsers.add_parser(MONITOR)
     list_parser = subparsers.add_parser(LIST)
+    set_parser = subparsers.add_parser(SET)
     reset_parser = subparsers.add_parser(RESET)
     remove_parser = subparsers.add_parser(REMOVE)
     plot_parser = subparsers.add_parser(PLOT)
@@ -71,6 +73,17 @@ def get_options(argv):
         WRITEME""")
     run_parser.add_argument("-f", "--force", action="store_true", help="""
         WRITEME""")
+
+    # Set parser arguments
+
+    set_parser.add_argument("experiment_name", help="""
+        WRITEME""")
+    set_parser.add_argument(
+        "job_status", choices=["pending", "running", "completed", "broken"], help="""
+            WRITEME""")
+    set_parser.add_argument(
+        "new_status", choices=["pending", "running", "completed"], help="""
+            WRITEME""")
 
     # Reset parser arguments
 
@@ -283,7 +296,7 @@ def run(function_path, experiment_config_file, job_config_file, force):
         job_scheduler.save_job(experiment["table"], state)
 
 
-def reset_jobs(name, status):
+def set_jobs(name, status, new_status):
     experiments = experiment_scheduler.load_experiments(
         cluster=None, filter_eq_dct=dict(name=name))
 
@@ -293,17 +306,31 @@ def reset_jobs(name, status):
 
     experiment = experiments[0]
 
-    if status == "broken":
+    if status == "pending":
+        jobs = job_scheduler.load_pending_jobs(experiment["table"])
+    elif status == "broken":
         jobs = job_scheduler.load_broken_jobs(experiment["table"])
     elif status == "completed":
         jobs = job_scheduler.load_completed_jobs(experiment["table"])
     elif status == "running":
         jobs = job_scheduler.load_running_jobs(experiment["table"])
 
-    print "Resetting %s jobs to START status..." % status
+    if new_status == "pending":
+        sql_new_status = sql.START
+        new_status = "pending"
+    elif new_status == "running":
+        sql_new_status = sql.RUNNING
+    elif new_status == "completed":
+        sql_new_status = sql.COMPLETE
+
+    print "Setting %s jobs to %s status..." % (status, new_status)
     job_scheduler.update_jobs(experiment["table"], jobs,
-                              expand({sql.STATUS: sql.START,
-                                      'proc_status': 'pending'}))
+                              expand({sql.STATUS: sql_new_status,
+                                      'proc_status': new_status}))
+
+
+def reset_jobs(name, status):
+    set_jobs(name, status, "pending")
 
 
 def remove_experiment(name):
